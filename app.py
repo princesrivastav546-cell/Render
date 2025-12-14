@@ -7,8 +7,8 @@ from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import asyncio
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
+from aiohttp import web
+import sys
 
 # ==================== CONFIGURATION ====================
 API_BASE = "https://anishexploits.site/api/api.php?key=exploits&num="
@@ -275,62 +275,66 @@ def format_cybersecurity_report(user_data, number, record_count, current_time):
     return report
 
 # ==================== SIMPLE WEB SERVER ====================
-class WebHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html')
-        self.end_headers()
-        self.wfile.write(b"Bot is running. Powered by Render.")
-    
-    def log_message(self, format, *args):
-        pass
+async def handle(request):
+    return web.Response(text="Bot is running. Powered by Render.")
 
-def run_web_server():
-    """Run a simple web server to keep Render alive"""
-    server = HTTPServer(('0.0.0.0', PORT), WebHandler)
+async def start_web_server():
+    """Start a simple aiohttp web server"""
+    app = web.Application()
+    app.router.add_get('/', handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
     print(f"✅ Web server started on port {PORT}")
-    server.serve_forever()
+    return runner
 
-# ==================== BOT RUNNER ====================
+# ==================== MAIN BOT FUNCTION ====================
 async def run_bot():
     """Run the Telegram bot"""
     try:
         print("\n" + "="*50)
         print("🛡️ OLIVER EXPLOITS NUMBER SCANNER")
-        print("📱 Status: STARTING...")
+        print("📱 Status: INITIALIZING...")
         print("="*50)
         
-        # Create and configure application
+        # Create application
         application = Application.builder().token(BOT_TOKEN).build()
         application.add_handler(CommandHandler("start", start))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         
         print("\n✅ Bot initialized successfully!")
-        print("🔍 Waiting for scan requests...\n")
+        print("🔍 Waiting for scan requests...")
+        
+        # Initialize the application
+        await application.initialize()
+        
+        # Start the bot
+        await application.start()
         
         # Start polling
-        await application.initialize()
-        await application.start()
         await application.updater.start_polling()
         
-        print("🚀 Bot is now running and ready!")
+        print("🚀 Bot is now running and ready!\n")
         
-        # Keep the bot running
-        while True:
-            await asyncio.sleep(3600)  # Sleep for 1 hour
+        # Run forever
+        await asyncio.Future()
         
     except Exception as e:
         print(f"❌ Bot error: {e}")
+        sys.exit(1)
 
 # ==================== MAIN ENTRY POINT ====================
-def main():
-    """Main entry point"""
-    # Start web server in a separate thread
-    web_thread = threading.Thread(target=run_web_server, daemon=True)
-    web_thread.start()
+async def main():
+    """Main async function"""
+    # Start web server
+    web_runner = await start_web_server()
     
-    # Run the bot
-    asyncio.run(run_bot())
+    # Run bot
+    await run_bot()
+    
+    # Cleanup (in case we exit)
+    await web_runner.cleanup()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
